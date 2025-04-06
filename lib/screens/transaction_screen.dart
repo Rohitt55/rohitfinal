@@ -29,16 +29,38 @@ class _TransactionScreenState extends State<TransactionScreen> {
   }
 
   List<Map<String, dynamic>> get filteredTransactions {
+    final now = DateTime.now();
+
     return transactions.where((tx) {
       if (selectedType != 'All' && tx["type"] != selectedType) return false;
-      return true;
+
+      final txDate = DateTime.parse(tx["date"]);
+
+      switch (selectedPeriod) {
+        case 'Today':
+          return txDate.year == now.year &&
+              txDate.month == now.month &&
+              txDate.day == now.day;
+        case 'Week':
+          final weekAgo = now.subtract(const Duration(days: 7));
+          return txDate.isAfter(weekAgo) || txDate.isAtSameMomentAs(weekAgo);
+        case 'Month':
+          return txDate.year == now.year && txDate.month == now.month;
+        case 'Year':
+          return txDate.year == now.year;
+        default:
+          return true;
+      }
     }).toList();
   }
 
   void _showEditDialog(Map<String, dynamic> transaction) {
-    TextEditingController amountController = TextEditingController(text: transaction["amount"].toString());
-    TextEditingController categoryController = TextEditingController(text: transaction["category"]);
-    TextEditingController noteController = TextEditingController(text: transaction["description"]);
+    TextEditingController amountController =
+    TextEditingController(text: transaction["amount"].toString());
+    TextEditingController categoryController =
+    TextEditingController(text: transaction["category"]);
+    TextEditingController noteController =
+    TextEditingController(text: transaction["description"]);
 
     showDialog(
       context: context,
@@ -78,7 +100,9 @@ class _TransactionScreenState extends State<TransactionScreen> {
             },
             child: const Text("Save"),
           ),
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Cancel")),
         ],
       ),
     );
@@ -101,14 +125,20 @@ class _TransactionScreenState extends State<TransactionScreen> {
               children: [
                 DropdownButton<String>(
                   value: selectedPeriod,
-                  items: periodOptions.map((p) => DropdownMenuItem(value: p, child: Text(p))).toList(),
-                  onChanged: (value) => setState(() => selectedPeriod = value!),
+                  items: periodOptions
+                      .map((p) => DropdownMenuItem(value: p, child: Text(p)))
+                      .toList(),
+                  onChanged: (value) =>
+                      setState(() => selectedPeriod = value!),
                 ),
                 const SizedBox(width: 20),
                 DropdownButton<String>(
                   value: selectedType,
-                  items: typeOptions.map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
-                  onChanged: (value) => setState(() => selectedType = value!),
+                  items: typeOptions
+                      .map((t) => DropdownMenuItem(value: t, child: Text(t)))
+                      .toList(),
+                  onChanged: (value) =>
+                      setState(() => selectedType = value!),
                 ),
               ],
             ),
@@ -119,10 +149,12 @@ class _TransactionScreenState extends State<TransactionScreen> {
               itemBuilder: (context, index) {
                 final tx = filteredTransactions[index];
                 return Card(
-                  margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  margin:
+                  const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                   child: ListTile(
                     title: Text("${tx["category"]} - ৳${tx["amount"]}"),
-                    subtitle: Text("${tx["description"]} • ${DateFormat.yMMMd().format(DateTime.parse(tx["date"]))}"),
+                    subtitle: Text(
+                        "${tx["description"]} • ${DateFormat.yMMMd().format(DateTime.parse(tx["date"]))}"),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
