@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../db/database_helper.dart';
 
 class StatisticsScreen extends StatefulWidget {
@@ -11,7 +13,13 @@ class StatisticsScreen extends StatefulWidget {
 
 class _StatisticsScreenState extends State<StatisticsScreen> {
   bool showIncome = false;
+  DateTime selectedWeekStart = _getStartOfCurrentWeek();
   List<Map<String, dynamic>> allTransactions = [];
+
+  static DateTime _getStartOfCurrentWeek() {
+    final now = DateTime.now();
+    return now.subtract(Duration(days: now.weekday - 1));
+  }
 
   @override
   void initState() {
@@ -24,13 +32,43 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
     setState(() => allTransactions = data);
   }
 
-  List<Map<String, dynamic>> get filteredByType {
-    return allTransactions.where((tx) => tx['type'] == (showIncome ? 'Income' : 'Expense')).toList();
+  List<Map<String, dynamic>> get filteredByWeekAndType {
+    final weekEnd = selectedWeekStart.add(const Duration(days: 6));
+
+    return allTransactions.where((tx) {
+      final txDate = DateTime.parse(tx['date']);
+      return tx['type'] == (showIncome ? 'Income' : 'Expense') &&
+          txDate.isAfter(selectedWeekStart.subtract(const Duration(days: 1))) &&
+          txDate.isBefore(weekEnd.add(const Duration(days: 1)));
+    }).toList();
+  }
+
+  List<BarChartGroupData> get weeklyBars {
+    return List.generate(7, (i) {
+      final day = selectedWeekStart.add(Duration(days: i));
+      double total = 0;
+      for (var tx in filteredByWeekAndType) {
+        final txDate = DateTime.parse(tx['date']);
+        if (txDate.year == day.year &&
+            txDate.month == day.month &&
+            txDate.day == day.day) {
+          total += tx['amount'] as int;
+        }
+      }
+      return BarChartGroupData(x: i, barRods: [
+        BarChartRodData(
+          toY: total,
+          width: 12,
+          borderRadius: BorderRadius.circular(4),
+          color: showIncome ? Colors.green : Colors.redAccent,
+        )
+      ]);
+    });
   }
 
   Map<String, int> get groupedByCategory {
     Map<String, int> result = {};
-    for (var tx in filteredByType) {
+    for (var tx in filteredByWeekAndType) {
       final category = tx['category'];
       final amount = tx['amount'] as int;
       result[category] = (result[category] ?? 0) + amount;
@@ -38,27 +76,25 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
     return result;
   }
 
-  List<BarChartGroupData> get weeklyBars {
-    return List.generate(7, (i) {
-      double total = allTransactions
-          .where((tx) => DateTime.parse(tx['date']).weekday == (i + 1))
-          .where((tx) => tx['type'] == (showIncome ? 'Income' : 'Expense'))
-          .fold(0.0, (sum, tx) => sum + (tx['amount'] as int));
-      return BarChartGroupData(x: i, barRods: [
-        BarChartRodData(
-          toY: total,
-          width: 14,
-          borderRadius: BorderRadius.circular(6),
-          color: showIncome ? Colors.green : Colors.redAccent,
-        )
-      ]);
-    });
+  void _selectWeek(BuildContext context) async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: selectedWeekStart,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+    );
+    if (picked != null) {
+      setState(() {
+        selectedWeekStart = picked.subtract(Duration(days: picked.weekday - 1));
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final categoryData = groupedByCategory;
     final total = categoryData.values.fold(0, (a, b) => a + b);
+    final weekRange = "${DateFormat('MMM d').format(selectedWeekStart)} - ${DateFormat('MMM d').format(selectedWeekStart.add(const Duration(days: 6)))}";
 
     return Scaffold(
       backgroundColor: const Color(0xFFFDF7F0),
@@ -69,12 +105,30 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
           icon: const Icon(Icons.arrow_back, color: Colors.black),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text("Financial Report", style: TextStyle(color: Colors.black)),
+        title: const Text("Weekly Report", style: TextStyle(color: Colors.black)),
       ),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
+            Row(
+              children: [
+                Text("Week: ", style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                const SizedBox(width: 8),
+                ElevatedButton.icon(
+                  onPressed: () => _selectWeek(context),
+                  icon: const Icon(Icons.calendar_today, size: 18),
+                  label: Text(weekRange),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.deepPurple,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
             Expanded(
               flex: 3,
               child: Card(
@@ -86,7 +140,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                 ),
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -96,7 +150,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
               ],
             ),
             const SizedBox(height: 16),
-            Expanded(flex: 2, child: _buildCategoryList(categoryData, total)),
+            Expanded(child: _buildCategoryList(categoryData, total)),
           ],
         ),
       ),
@@ -104,11 +158,13 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
   }
 
   Widget _buildBarChart() {
+    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          showIncome ? "Weekly Income Overview" : "Weekly Expenses Overview",
+          "Weekly ${showIncome ? 'Income' : 'Expenses'}",
           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
         ),
         const SizedBox(height: 10),
@@ -118,33 +174,35 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
             BarChartData(
               titlesData: FlTitlesData(
                 bottomTitles: AxisTitles(
-                  sideTitles: SideTitles(showTitles: true, getTitlesWidget: (value, meta) {
-                    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-                    return Padding(
-                      padding: const EdgeInsets.only(top: 8.0),
-                      child: Text(days[value.toInt() % 7], style: const TextStyle(fontSize: 10)),
-                    );
-                  }),
+                  sideTitles: SideTitles(
+                    showTitles: true,
+                    getTitlesWidget: (value, _) {
+                      return Text(days[value.toInt() % 7], style: const TextStyle(fontSize: 11));
+                    },
+                  ),
                 ),
                 leftTitles: AxisTitles(
                   sideTitles: SideTitles(
                     showTitles: true,
-                    interval: 2000,
+                    interval: 1000,
                     reservedSize: 36,
-                    getTitlesWidget: (value, meta) {
-                      return Padding(
-                        padding: const EdgeInsets.only(right: 4.0),
-                        child: Text(
-                          "${value.toInt()}",
-                          style: const TextStyle(fontSize: 10, color: Colors.black),
-                        ),
-                      );
+                    getTitlesWidget: (value, _) {
+                      return Text("${value.toInt()}", style: const TextStyle(fontSize: 10));
                     },
                   ),
                 ),
               ),
               barGroups: weeklyBars,
-              gridData: FlGridData(show: true),
+              gridData: FlGridData(
+                show: true,
+                drawHorizontalLine: true,
+                getDrawingHorizontalLine: (value) => FlLine(
+                  color: Colors.grey.withOpacity(0.3),
+                  strokeWidth: 1,
+                  dashArray: [4, 4],
+                ),
+                drawVerticalLine: false,
+              ),
               borderData: FlBorderData(show: false),
             ),
           ),

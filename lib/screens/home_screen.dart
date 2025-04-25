@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart'; // ✅ Added
 import '../db/database_helper.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -23,7 +24,10 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _loadTransactions() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    final email = prefs.getString('email') ?? '';
     final data = await DatabaseHelper.instance.getAllTransactions();
+    // Data already filtered by user in database_helper
     setState(() => transactions = data.reversed.toList());
   }
 
@@ -105,7 +109,7 @@ class _HomeScreenState extends State<HomeScreen> {
           setState(() => selectedIndex = index);
           if (index == 1) {
             await Navigator.pushNamed(context, '/transactions');
-            _loadTransactions(); // ✅ Refresh after editing/deleting
+            _loadTransactions();
           }
           if (index == 2) Navigator.pushNamed(context, '/statistics');
           if (index == 3) Navigator.pushNamed(context, '/profile');
@@ -123,8 +127,8 @@ class _HomeScreenState extends State<HomeScreen> {
       floatingActionButton: FloatingActionButton(
         onPressed: () =>
             Navigator.pushNamed(context, '/add').then((_) => _loadTransactions()),
-        backgroundColor: Colors.deepPurple,
-        child: const Icon(Icons.add),
+        backgroundColor: Colors.grey,
+        child: const Icon(Icons.add, color: Colors.white),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
     );
@@ -190,8 +194,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 option,
                 style: TextStyle(
                   color: isSelected ? Colors.white : Colors.black87,
-                  fontWeight:
-                  isSelected ? FontWeight.bold : FontWeight.normal,
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                 ),
               ),
             ),
@@ -227,7 +230,7 @@ class _HomeScreenState extends State<HomeScreen> {
       return const Center(child: Text("No transactions yet"));
     }
 
-    final limitedList = filteredTransactions.take(5).toList(); // top 5 only
+    final limitedList = filteredTransactions.take(5).toList();
 
     return ListView.builder(
       itemCount: limitedList.length,

@@ -62,26 +62,31 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _exportData() async {
-    final transactions = await DatabaseHelper.instance.getAllTransactions();
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    final email = prefs.getString('email') ?? '';
+
+    final allTransactions = await DatabaseHelper.instance.getAllTransactions(); // already user filtered
     List<List<dynamic>> csvData = [
       ['ID', 'Amount', 'Category', 'Type', 'Date', 'Description'],
-      ...transactions.map((tx) => [
+      ...allTransactions.map((tx) => [
         tx['id'],
         tx['amount'],
         tx['category'],
         tx['type'],
         tx['date'],
-        tx['description']
+        tx['description'],
       ]),
     ];
 
     String csv = const ListToCsvConverter().convert(csvData);
     final directory = await getApplicationDocumentsDirectory();
-    final path = "${directory.path}/transactions.csv";
+    final path = "${directory.path}/transactions_${email.replaceAll('@', '_').replaceAll('.', '_')}.csv";
     final file = File(path);
     await file.writeAsString(csv);
 
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Exported to: $path")));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text("Exported to: $path")),
+    );
   }
 
   Future<void> _logout() async {

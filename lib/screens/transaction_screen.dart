@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../db/database_helper.dart';
 
 class TransactionScreen extends StatefulWidget {
@@ -38,9 +39,7 @@ class _TransactionScreenState extends State<TransactionScreen> {
 
       switch (selectedPeriod) {
         case 'Today':
-          return txDate.year == now.year &&
-              txDate.month == now.month &&
-              txDate.day == now.day;
+          return txDate.year == now.year && txDate.month == now.month && txDate.day == now.day;
         case 'Week':
           final weekAgo = now.subtract(const Duration(days: 7));
           return txDate.isAfter(weekAgo) || txDate.isAtSameMomentAs(weekAgo);
@@ -87,22 +86,41 @@ class _TransactionScreenState extends State<TransactionScreen> {
         actions: [
           TextButton(
             onPressed: () async {
-              await DatabaseHelper.instance.updateTransaction({
+              final amountText = amountController.text.trim();
+              if (amountText.isEmpty || int.tryParse(amountText) == null) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Please enter valid amount')),
+                );
+                return;
+              }
+
+              final updatedData = {
                 'id': transaction['id'],
-                'amount': double.parse(amountController.text),
+                'amount': int.parse(amountText),
                 'category': categoryController.text,
                 'description': noteController.text,
                 'date': transaction['date'],
                 'type': transaction['type'],
-              });
-              Navigator.pop(context);
-              _loadTransactions();
+                'userEmail': transaction['userEmail'],
+              };
+
+              try {
+                await DatabaseHelper.instance.updateTransaction(updatedData);
+                Navigator.pop(context);
+                _loadTransactions();
+              } catch (e) {
+                print('Error updating transaction: $e');
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Update failed')),
+                );
+              }
             },
             child: const Text("Save"),
           ),
           TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text("Cancel")),
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Cancel"),
+          ),
         ],
       ),
     );
@@ -116,7 +134,13 @@ class _TransactionScreenState extends State<TransactionScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Transaction History")),
+      backgroundColor: const Color(0xFFFDF7F0),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFFFDF7F0),
+        elevation: 0,
+        title: const Text("Transaction History", style: TextStyle(color: Colors.black)),
+        iconTheme: const IconThemeData(color: Colors.black),
+      ),
       body: Column(
         children: [
           Padding(
@@ -128,8 +152,7 @@ class _TransactionScreenState extends State<TransactionScreen> {
                   items: periodOptions
                       .map((p) => DropdownMenuItem(value: p, child: Text(p)))
                       .toList(),
-                  onChanged: (value) =>
-                      setState(() => selectedPeriod = value!),
+                  onChanged: (value) => setState(() => selectedPeriod = value!),
                 ),
                 const SizedBox(width: 20),
                 DropdownButton<String>(
@@ -137,20 +160,20 @@ class _TransactionScreenState extends State<TransactionScreen> {
                   items: typeOptions
                       .map((t) => DropdownMenuItem(value: t, child: Text(t)))
                       .toList(),
-                  onChanged: (value) =>
-                      setState(() => selectedType = value!),
+                  onChanged: (value) => setState(() => selectedType = value!),
                 ),
               ],
             ),
           ),
           Expanded(
-            child: ListView.builder(
+            child: filteredTransactions.isEmpty
+                ? const Center(child: Text("No transactions available"))
+                : ListView.builder(
               itemCount: filteredTransactions.length,
               itemBuilder: (context, index) {
                 final tx = filteredTransactions[index];
                 return Card(
-                  margin:
-                  const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                   child: ListTile(
                     title: Text("${tx["category"]} - ৳${tx["amount"]}"),
                     subtitle: Text(
